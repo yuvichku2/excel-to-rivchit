@@ -5,8 +5,11 @@ import io
 # הגדרות עמוד
 st.set_page_config(page_title="Bank to Rovachit DAT Converter", layout="centered")
 
+# הצגת מספר גרסה בראש העמוד לוודא עדכניות
+st.sidebar.info("גרסת אפליקציה: 3.0 (DAT Export)")
+
 st.title("🏦 ממיר דפי בנק לפורמט DAT (רווחית)")
-st.write("גרסה סופית: הפרדת חובה/זכות + תיקון עברית")
+st.write("מפריד חובה/זכות, מתקן עברית ומייצא קובץ DAT")
 
 # 1. העלאת הקובץ
 uploaded_file = st.file_uploader("העלה קובץ אקסל או CSV", type=['xlsx', 'csv'])
@@ -52,7 +55,6 @@ if uploaded_file is not None:
             st.dataframe(final_df.head())
 
             # 5. יצירת קובץ DAT (מופרד ב-Tabs ובקידוד עברית חלונות)
-            # הקידוד cp1255 מבטיח שהעברית לא תהיה ג'יבריש ברווחית
             buffer = io.StringIO()
             final_df.to_csv(buffer, sep='\t', index=False, encoding='cp1255')
             
@@ -65,4 +67,3 @@ if uploaded_file is not None:
 
     except Exception as e:
         st.error(f"אירעה שגיאה בעיבוד הקובץ: {e}")
-        st.info("ודא שהקובץ אינו מוגן בסיסמה ושהעמודות נבחרו נכון.")
