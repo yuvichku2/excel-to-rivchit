@@ -2,82 +2,73 @@ import streamlit as st
 import pandas as pd
 import io
 
-# הגדרות עמוד
-st.set_page_config(page_title="Bank to Rovachit DAT Converter", layout="centered")
+st.set_page_config(page_title="Rovachit Bank Converter v6", layout="centered")
 
-# הצגת מספר גרסה לוודא עדכניות
-st.sidebar.info("גרסת אפליקציה: 5.0 (Final DAT Fix)")
+st.sidebar.info("גרסת אפליקציה: 6.0 (Custom Template Mode)")
 
-st.title("🏦 ממיר דפי בנק לפורמט DAT (רווחית)")
-st.write("תיקון מבנה הקובץ והתאמה מלאה לייבוא")
+st.title("🏦 ממיר דפי בנק מותאם לרווחית")
+st.write("מכין קובץ אקסל לפי ההנחיות: תאריך DD/MM/YY, מספר שורה 0, ואסמכתא מוגבלת.")
 
-# 1. העלאת הקובץ
-uploaded_file = st.file_uploader("העלה קובץ אקסל או CSV", type=['xlsx', 'csv'])
+uploaded_file = st.file_uploader("העלה את קובץ דפי הבנק (SKYHALO)", type=['xlsx'])
 
 if uploaded_file is not None:
     try:
-        # קריאה ראשונית של הקובץ
-        if uploaded_file.name.endswith('.csv'):
-            df = pd.read_csv(uploaded_file, encoding='cp1255')
-        else:
-            df = pd.read_excel(uploaded_file)
+        # קריאת הנתונים מהקובץ שהעלית
+        df_src = pd.read_excel(uploaded_file)
+        st.success("קובץ המקור נטען בהצלחה!")
         
-        st.success("הקובץ נטען!")
-
-        # 2. הגדרות מבנה
-        mode = st.radio("מבנה הסכומים בקובץ:", 
-                        ("טור סכום אחד (יתרה)", "שני טורים (חובה וזכות)"))
-        
-        include_header = st.checkbox("כלול שורת כותרת בקובץ ה-DAT (מומלץ לנסות בלי אם הייבוא נכשל)", value=False)
-
-        cols = df.columns.tolist()
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            date_col = st.selectbox("טור תאריך:", cols)
-            desc_col = st.selectbox("טור פרטים:", cols)
-        with col2:
-            ref_col = st.selectbox("טור אסמכתא:", cols)
-            if mode == "טור סכום אחד (יתרה)":
-                amount_col = st.selectbox("טור סכום:", cols)
-            else:
-                src_debit_col = st.selectbox("טור חובה מקורי:", cols)
-                src_credit_col = st.selectbox("טור זכות מקורי:", cols)
-
-        if st.button("צור קובץ DAT סופי"):
-            # 3. עיבוד הנתונים
-            if mode == "טור סכום אחד (יתרה)":
-                df[amount_col] = pd.to_numeric(df[amount_col], errors='coerce').fillna(0)
-                df['f_debit'] = df[amount_col].apply(lambda x: abs(x) if x < 0 else 0)
-                df['f_credit'] = df[amount_col].apply(lambda x: x if x > 0 else 0)
-            else:
-                df['f_debit'] = pd.to_numeric(df[src_debit_col], errors='coerce').abs().fillna(0)
-                df['f_credit'] = pd.to_numeric(df[src_credit_col], errors='coerce').abs().fillna(0)
-
-            # בניית הטבלה לייצוא
-            final_df = pd.DataFrame({
-                'Date': df[date_col],
-                'Description': df[desc_col],
-                'Reference': df[ref_col],
-                'Debit': df['f_debit'],
-                'Credit': df['f_credit']
-            })
-
-            # 4. ייצוא מוקפד ל-DAT
-            # שימוש ב-lineterminator מבטיח הפרדת שורות תקינה בווינדוס
-            output = io.StringIO()
-            final_df.to_csv(output, sep='\t', index=False, header=include_header, 
-                            encoding='cp1255', lineterminator='\r\n')
+        if st.button("צור קובץ יעד לייבוא"):
+            # 1. יצירת דאטה-פריים חדש לפי מבנה היעד
+            new_df = pd.DataFrame()
             
-            st.write("תצוגה מקדימה של הנתונים:")
-            st.dataframe(final_df.head())
-
+            # עמודה 1: מספר שורה (תמיד 0)
+            new_df['מס\' שורה'] = [0] * len(df_src)
+            
+            # עמודה 2: תאריך בפורמט DD/MM/YY
+            # מטפלים גם בתאריכים שהם מחרוזת וגם ב-Datetime
+            date_col = 'תאריך פעולה'
+            df_src[date_col] = pd.to_datetime(df_src[date_col], dayfirst=True, errors='coerce')
+            new_df['תאריך'] = df_src[date_col].dt.strftime('%d/%m/%y')
+            
+            # עמודות 3-4: חובה וזכות
+            # בטור המקור: מינוס זה חובה, פלוס זה זכות
+            amount_col = '$ זכות / חובה'
+            new_df['חובה'] = df_src[amount_col].apply(lambda x: abs(x) if x < 0 else 0)
+            new_df['זכות'] = df_src[amount_col].apply(lambda x: x if x > 0 else 0)
+            
+            # עמודה 5: אסמכתא (עד 9 תווים)
+            new_df['אסמכתא'] = df_src['אסמכתה'].astype(str).str.replace('.0', '', regex=False).str[:9]
+            new_df['אסמכתא'] = new_df['אסמכתא'].replace('nan', '')
+            
+            # עמודה 6: פרטים
+            new_df['פרטים'] = df_src['תיאור הפעולה']
+            
+            st.write("תצוגה מקדימה של הקובץ המוכן:")
+            st.dataframe(new_df.head())
+            
+            # הורדת הקובץ בפורמט CSV (עם טאבים) או Excel
+            # לפי ההנחיה שלך - שמירה כ-Text Tab Delimited היא האידיאלית
+            buffer = io.StringIO()
+            new_df.to_csv(buffer, sep='\t', index=False, encoding='cp1255', header=False)
+            
             st.download_button(
-                label="📥 הורד קובץ DAT מתוקן",
-                data=output.getvalue(),
-                file_name="bank_data_fixed.dat",
+                label="📥 הורד קובץ סופי לייבוא (TXT/DAT)",
+                data=buffer.getvalue(),
+                file_name="bank_import_ready.txt",
                 mime="text/plain"
+            )
+            
+            # אפשרות להורדה גם כאקסל לביקורת
+            output_excel = io.BytesIO()
+            with pd.ExcelWriter(output_excel, engine='xlsxwriter') as writer:
+                new_df.to_excel(writer, index=False, sheet_name='Sheet1')
+            
+            st.download_button(
+                label="📊 הורד כקובץ אקסל (לביקורת)",
+                data=output_excel.getvalue(),
+                file_name="bank_import_check.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
     except Exception as e:
-        st.error(f"שגיאה: {e}")
+        st.error(f"שגיאה בעיבוד הקובץ: {e}")
